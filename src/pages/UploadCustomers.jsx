@@ -1,6 +1,6 @@
 import React from "react";
 import * as XLSX from "xlsx";
-import { useCustomerStore } from "../store/useCustomerStore";
+import useCustomerStore from "../store/useCustomerStore";   // ✅ FIXED IMPORT
 
 export default function UploadCustomers() {
   const { customers, setCustomers } = useCustomerStore();
@@ -18,10 +18,10 @@ export default function UploadCustomers() {
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const json = XLSX.utils.sheet_to_json(sheet);
 
-      // 🔥 Save temporarily so Daily Summary can read it on ANY page
+      // Save to sessionStorage
       sessionStorage.setItem("customers", JSON.stringify(json));
 
-      // 🔥 Update Zustand store too
+      // Save to Zustand store
       setCustomers(json);
     };
 

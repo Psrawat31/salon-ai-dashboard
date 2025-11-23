@@ -1,5 +1,5 @@
 import React from "react";
-import { useCustomerStore } from "../store/useCustomerStore";
+import useCustomerStore from "../store/useCustomerStore";   // ✅ FIXED IMPORT
 import { generateSummary, loadCustomersFromSession } from "../lib/summaryEngine";
 
 export default function DailySummary() {
