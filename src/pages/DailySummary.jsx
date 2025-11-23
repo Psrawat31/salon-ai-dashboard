@@ -1,11 +1,11 @@
 import React from "react";
-import { useCustomerStore } from "../store/useCustomerStore";
+import useCustomerStore from "../store/useCustomerStore";
 import { generateSummary } from "../lib/summaryEngine";
 
 export default function DailySummary() {
   let { customers } = useCustomerStore();
 
-  // Try loading from sessionStorage if Zustand empty
+  // Load from sessionStorage when Zustand is empty
   if (!customers || customers.length === 0) {
     const stored = sessionStorage.getItem("customers");
     if (stored) {
