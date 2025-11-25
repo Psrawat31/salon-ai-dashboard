@@ -1,15 +1,19 @@
-import React, { useState, useContext } from "react";
+import React, { useState } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { ThemeContext } from "../ThemeContext";
+
+// Helper: always returns array
+const safeArray = (v) => (Array.isArray(v) ? v : []);
+
+// Helper: always returns object
+const safeObject = (v) => (v && typeof v === "object" ? v : {});
 
 const CustomerProfile = () => {
   const [rows, setRows] = useState([]);
   const [detectedCols, setDetectedCols] = useState(null);
   const [customerStats, setCustomerStats] = useState([]);
   const [summary, setSummary] = useState(null);
-  const { darkMode } = useContext(ThemeContext);
 
   const handleUpload = (e) => {
     const file = e.target.files[0];
@@ -17,9 +21,10 @@ const CustomerProfile = () => {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const wb = XLSX.read(event.target.result, { type: "binary" });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(sheet);
+      let wb = XLSX.read(event.target.result, { type: "binary" });
+      let sheet = wb.Sheets[wb.SheetNames[0]];
+
+      let json = safeArray(XLSX.utils.sheet_to_json(sheet));
 
       setRows(json);
       process(json);
@@ -28,7 +33,9 @@ const CustomerProfile = () => {
     reader.readAsBinaryString(file);
   };
 
-  const pickColumn = (keys, keywords) => {
+  const pickColumn = (keys = [], keywords = []) => {
+    if (!Array.isArray(keys)) return null;
+
     const lower = keys.map((k) => k.toLowerCase());
     for (let i = 0; i < lower.length; i++) {
       if (keywords.some((kw) => lower[i].includes(kw))) return keys[i];
@@ -37,9 +44,11 @@ const CustomerProfile = () => {
   };
 
   const process = (data) => {
-    if (!data || data.length === 0) return;
+    data = safeArray(data);
+    if (data.length === 0) return;
 
-    const keys = Object.keys(data[0]);
+    const first = safeObject(data[0]);
+    const keys = Object.keys(first);
 
     const nameCol = pickColumn(keys, ["name", "customer", "client"]);
     const visitCol = pickColumn(keys, ["visit", "last"]);
@@ -47,23 +56,20 @@ const CustomerProfile = () => {
     const revenueCol = pickColumn(keys, ["revenue", "amount"]);
     const contactCol = pickColumn(keys, ["contact", "contacted"]);
 
-    const detected = {
-      nameCol,
-      visitCol,
-      serviceCol,
-      revenueCol,
-      contactCol,
-    };
+    const detected = { nameCol, visitCol, serviceCol, revenueCol, contactCol };
     setDetectedCols(detected);
 
     const map = {};
 
-    data.forEach((row) => {
-      const name = nameCol ? row[nameCol] || "Unknown" : "Unknown";
-      const revenue = revenueCol ? parseFloat(row[revenueCol]) || 0 : 0;
-      const contacted = contactCol ? String(row[contactCol]).toLowerCase() : "";
-      const service = serviceCol ? row[serviceCol] : "-";
-      const visit = visitCol ? row[visitCol] : "-";
+    safeArray(data).forEach((rowRaw) => {
+      const row = safeObject(rowRaw);
+
+      const name = row[nameCol] || "Unknown";
+      const revenue = parseFloat(row[revenueCol]) || 0;
+      const service = row[serviceCol] || "-";
+      const visit = row[visitCol] || "-";
+
+      const contacted = String(row[contactCol] || "").toLowerCase();
 
       if (!map[name]) {
         map[name] = {
@@ -78,8 +84,9 @@ const CustomerProfile = () => {
 
       map[name].visits += 1;
       map[name].totalRevenue += revenue;
-      if (service) map[name].services.add(service);
       map[name].lastVisit = visit;
+
+      if (service !== "-") map[name].services.add(service);
 
       if (contactCol) {
         if (contacted.includes("yes") || contacted.includes("done"))
@@ -107,7 +114,9 @@ const CustomerProfile = () => {
       totalRevenue: stats.reduce((a, b) => a + b.totalRevenue, 0),
       avgRevenue:
         stats.length > 0
-          ? (stats.reduce((a, b) => a + b.totalRevenue, 0) / stats.length).toFixed(0)
+          ? (
+              stats.reduce((a, b) => a + b.totalRevenue, 0) / stats.length
+            ).toFixed(0)
           : 0,
       repeatCustomers: stats.filter((c) => c.visits > 1).length,
     });
@@ -118,24 +127,18 @@ const CustomerProfile = () => {
 
     const doc = new jsPDF("p", "mm");
 
-    // Header
-    doc.setFillColor(0, 0, 0);
-    doc.rect(0, 0, 220, 30, "F");
-    doc.setTextColor(255, 215, 0);
-    doc.setFontSize(18);
-    doc.text("Customer Profile Report", 60, 20);
-
     try {
-      doc.addImage("/mirrors_logo.png", "PNG", 150, 8, 40, 15);
+      doc.addImage("/mirrors_logo.png", "PNG", 80, 8, 50, 20);
     } catch {}
 
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(11);
+    doc.setFontSize(18);
+    doc.text("Customer Profile Report", 65, 38);
 
-    doc.text(`Total Customers: ${summary.totalCustomers}`, 14, 50);
-    doc.text(`Total Revenue: ₹${summary.totalRevenue}`, 14, 58);
-    doc.text(`Avg Revenue per Customer: ₹${summary.avgRevenue}`, 14, 66);
-    doc.text(`Repeat Customers: ${summary.repeatCustomers}`, 14, 74);
+    doc.setFontSize(11);
+    doc.text(`Total Customers: ${summary.totalCustomers}`, 14, 60);
+    doc.text(`Total Revenue: ₹${summary.totalRevenue}`, 14, 68);
+    doc.text(`Avg Revenue: ₹${summary.avgRevenue}`, 14, 76);
+    doc.text(`Repeat Customers: ${summary.repeatCustomers}`, 14, 84);
 
     const head = [
       [
@@ -144,11 +147,11 @@ const CustomerProfile = () => {
         "Last Visit",
         "Total Revenue",
         "Services",
-        detectedCols?.contactCol ? "Contacted" : "",
+        detectedCols?.contactCol ? "Contacted" : null,
       ].filter(Boolean),
     ];
 
-    const body = customerStats.map((c) =>
+    const body = safeArray(customerStats).map((c) =>
       [
         c.name,
         c.visits,
@@ -159,13 +162,7 @@ const CustomerProfile = () => {
       ].filter(Boolean)
     );
 
-    autoTable(doc, {
-      startY: 90,
-      head,
-      body,
-      headStyles: { fillColor: [0, 0, 0], textColor: [255, 215, 0] },
-      bodyStyles: { textColor: [0, 0, 0] },
-    });
+    autoTable(doc, { startY: 100, head, body });
 
     doc.setFontSize(10);
     doc.text("Powered by Salon AI", 80, 290);
@@ -174,50 +171,22 @@ const CustomerProfile = () => {
   };
 
   return (
-    <div
-      className={`p-6 min-h-screen transition-all ${
-        darkMode ? "bg-[#111] text-yellow-300" : "bg-white text-black"
-      }`}
-    >
+    <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">Customer Profiles</h1>
 
-      <input
-        type="file"
-        onChange={handleUpload}
-        className="mb-6 p-2 border rounded bg-white text-black"
-      />
+      <input type="file" onChange={handleUpload} className="mb-4" />
 
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div
-            className={`p-4 rounded-xl shadow-lg border ${
-              darkMode
-                ? "bg-[#1A1A1A] border-blue-400"
-                : "bg-blue-100 border-blue-300"
-            }`}
-          >
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="p-4 bg-blue-100 rounded shadow">
             <h2 className="text-sm font-semibold mb-1">Total Customers</h2>
             <p className="text-2xl font-bold">{summary.totalCustomers}</p>
           </div>
-
-          <div
-            className={`p-4 rounded-xl shadow-lg border ${
-              darkMode
-                ? "bg-[#1A1A1A] border-green-400"
-                : "bg-green-100 border-green-300"
-            }`}
-          >
+          <div className="p-4 bg-green-100 rounded shadow">
             <h2 className="text-sm font-semibold mb-1">Total Revenue</h2>
             <p className="text-2xl font-bold">₹{summary.totalRevenue}</p>
           </div>
-
-          <div
-            className={`p-4 rounded-xl shadow-lg border ${
-              darkMode
-                ? "bg-[#1A1A1A] border-purple-400"
-                : "bg-purple-100 border-purple-300"
-            }`}
-          >
+          <div className="p-4 bg-purple-100 rounded shadow">
             <h2 className="text-sm font-semibold mb-1">Repeat Customers</h2>
             <p className="text-2xl font-bold">{summary.repeatCustomers}</p>
           </div>
@@ -227,11 +196,7 @@ const CustomerProfile = () => {
       {summary && (
         <button
           onClick={downloadPDF}
-          className={`mt-6 px-6 py-3 rounded-xl font-bold shadow-lg ${
-            darkMode
-              ? "bg-yellow-400 text-black hover:bg-yellow-500"
-              : "bg-blue-600 text-white hover:bg-blue-700"
-          }`}
+          className="mt-4 px-6 py-3 bg-blue-600 text-white rounded shadow hover:bg-blue-700"
         >
           Download Customer Profile PDF
         </button>

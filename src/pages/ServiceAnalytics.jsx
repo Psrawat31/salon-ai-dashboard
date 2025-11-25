@@ -1,15 +1,15 @@
-import React, { useState, useContext } from "react";
+import React, { useState } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { ThemeContext } from "../ThemeContext";
 
 const ServiceAnalytics = () => {
   const [data, setData] = useState([]);
   const [detectedCols, setDetectedCols] = useState(null);
   const [serviceStats, setServiceStats] = useState([]);
   const [summary, setSummary] = useState(null);
-  const { darkMode } = useContext(ThemeContext);
+
+  const safeArray = (v) => (Array.isArray(v) ? v : []);
 
   const handleUpload = (e) => {
     const file = e.target.files[0];
@@ -17,9 +17,9 @@ const ServiceAnalytics = () => {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const wb = XLSX.read(event.target.result, { type: "binary" });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(sheet);
+      let wb = XLSX.read(event.target.result, { type: "binary" });
+      let sheet = wb.Sheets[wb.SheetNames[0]];
+      let json = safeArray(XLSX.utils.sheet_to_json(sheet));
 
       setData(json);
       process(json);
@@ -27,7 +27,8 @@ const ServiceAnalytics = () => {
     reader.readAsBinaryString(file);
   };
 
-  const pickColumn = (keys, keywords) => {
+  const pickColumn = (keys = [], keywords = []) => {
+    if (!Array.isArray(keys)) return null;
     const lower = keys.map((k) => k.toLowerCase());
     for (let i = 0; i < lower.length; i++) {
       if (keywords.some((kw) => lower[i].includes(kw))) return keys[i];
@@ -36,23 +37,23 @@ const ServiceAnalytics = () => {
   };
 
   const process = (rows) => {
-    if (!rows || rows.length === 0) return;
+    rows = safeArray(rows);
+    if (rows.length === 0) return;
 
-    const keys = Object.keys(rows[0]);
+    const keys = Object.keys(rows[0] || {});
 
     const serviceCol = pickColumn(keys, ["service", "treatment", "category"]);
     const revenueCol = pickColumn(keys, ["revenue", "amount", "bill", "value"]);
     const contactCol = pickColumn(keys, ["contact", "contacted", "status"]);
 
-    const detected = { serviceCol, revenueCol, contactCol };
-    setDetectedCols(detected);
+    setDetectedCols({ serviceCol, revenueCol, contactCol });
 
     const serviceMap = {};
 
-    rows.forEach((row) => {
-      const service = serviceCol ? row[serviceCol] || "Unknown" : "Unknown";
-      const revenue = revenueCol ? parseFloat(row[revenueCol]) || 0 : 0;
-      const contacted = contactCol ? String(row[contactCol]).toLowerCase() : null;
+    rows.forEach((row = {}) => {
+      const service = row[serviceCol] || "Unknown";
+      const revenue = parseFloat(row[revenueCol]) || 0;
+      const contacted = String(row[contactCol] || "").toLowerCase();
 
       if (!serviceMap[service]) {
         serviceMap[service] = {
@@ -73,8 +74,8 @@ const ServiceAnalytics = () => {
       }
     });
 
-    const stats = Object.entries(serviceMap).map(([name, s]) => ({
-      service: name,
+    const stats = Object.entries(serviceMap).map(([service, s]) => ({
+      service,
       count: s.count,
       revenue: s.revenue,
       contacted: s.contacted,
@@ -84,6 +85,7 @@ const ServiceAnalytics = () => {
     stats.sort((a, b) => b.revenue - a.revenue);
 
     setServiceStats(stats);
+
     setSummary({
       totalServices: stats.reduce((a, b) => a + b.count, 0),
       totalRevenue: stats.reduce((a, b) => a + b.revenue, 0),
@@ -96,33 +98,25 @@ const ServiceAnalytics = () => {
     if (!summary) return;
 
     const doc = new jsPDF();
-
-    // Header
-    doc.setFillColor(0, 0, 0);
-    doc.rect(0, 0, 220, 30, "F");
-    doc.setTextColor(255, 215, 0);
-    doc.setFontSize(18);
-    doc.text("Service Analytics Report", 60, 20);
-
     try {
-      doc.addImage("/mirrors_logo.png", "PNG", 150, 8, 40, 15);
+      doc.addImage("/mirrors_logo.png", "PNG", 80, 8, 50, 20);
     } catch {}
 
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(11);
+    doc.setFontSize(18);
+    doc.text("Service Analytics Report", 65, 38);
 
-    doc.text(`Total Services Rendered: ${summary.totalServices}`, 14, 50);
-    doc.text(`Total Revenue: ₹${summary.totalRevenue}`, 14, 58);
-    doc.text(`Top Service: ${summary.topService}`, 14, 66);
-    doc.text(`Top Service Revenue: ₹${summary.topRevenue}`, 14, 74);
+    doc.setFontSize(11);
+    doc.text(`Total Services: ${summary.totalServices}`, 14, 60);
+    doc.text(`Total Revenue: ₹${summary.totalRevenue}`, 14, 68);
+    doc.text(`Top Service: ${summary.topService}`, 14, 76);
 
     const head = [
       [
         "Service",
         "Count",
         "Revenue",
-        detectedCols?.contactCol ? "Contacted" : "",
-        detectedCols?.contactCol ? "Not Contacted" : "",
+        detectedCols?.contactCol ? "Contacted" : null,
+        detectedCols?.contactCol ? "Not Contacted" : null,
       ].filter(Boolean),
     ];
 
@@ -136,90 +130,22 @@ const ServiceAnalytics = () => {
       ].filter(Boolean)
     );
 
-    autoTable(doc, {
-      startY: 90,
-      head,
-      body,
-      headStyles: { fillColor: [0, 0, 0], textColor: [255, 215, 0] },
-      bodyStyles: { textColor: [0, 0, 0] },
-    });
-
+    autoTable(doc, { startY: 100, head, body });
     doc.setFontSize(10);
     doc.text("Powered by Salon AI", 80, 290);
-
     doc.save("Service_Analytics_Report.pdf");
   };
 
   return (
-    <div
-      className={`p-6 min-h-screen transition-all ${
-        darkMode ? "bg-[#111] text-yellow-300" : "bg-white text-black"
-      }`}
-    >
-      <h1 className="text-2xl font-bold mb-6">Service Analytics</h1>
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">Service Analytics</h1>
 
-      <input
-        type="file"
-        onChange={handleUpload}
-        className="mb-6 p-2 border rounded bg-white text-black"
-      />
-
-      {detectedCols && (
-        <div className="text-sm mb-6">
-          <p className="font-semibold">Detected Columns:</p>
-          <ul className="list-disc list-inside space-y-1">
-            <li>Service: {detectedCols.serviceCol || "Not found"}</li>
-            <li>Revenue: {detectedCols.revenueCol || "Not found"}</li>
-            <li>Contacted: {detectedCols.contactCol || "Not found"}</li>
-          </ul>
-        </div>
-      )}
+      <input type="file" onChange={handleUpload} className="mb-4" />
 
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div
-            className={`p-4 rounded-xl shadow-lg border ${
-              darkMode
-                ? "bg-[#1A1A1A] border-blue-400"
-                : "bg-blue-100 border-blue-300"
-            }`}
-          >
-            <h2 className="font-semibold text-sm">Total Services</h2>
-            <p className="text-2xl font-bold">{summary.totalServices}</p>
-          </div>
-
-          <div
-            className={`p-4 rounded-xl shadow-lg border ${
-              darkMode
-                ? "bg-[#1A1A1A] border-green-400"
-                : "bg-green-100 border-green-300"
-            }`}
-          >
-            <h2 className="font-semibold text-sm">Total Revenue</h2>
-            <p className="text-2-3xl font-bold">₹{summary.totalRevenue}</p>
-          </div>
-
-          <div
-            className={`p-4 rounded-xl shadow-lg border ${
-              darkMode
-                ? "bg-[#1A1A1A] border-purple-400"
-                : "bg-purple-100 border-purple-300"
-            }`}
-          >
-            <h2 className="font-semibold text-sm">Top Service</h2>
-            <p className="text-2xl font-bold">{summary.topService}</p>
-          </div>
-        </div>
-      )}
-
-      {serviceStats.length > 0 && (
         <button
           onClick={downloadPDF}
-          className={`mt-4 px-6 py-3 rounded-xl font-bold shadow-lg ${
-            darkMode
-              ? "bg-yellow-400 text-black hover:bg-yellow-500"
-              : "bg-blue-600 text-white hover:bg-blue-700"
-          }`}
+          className="mt-4 px-6 py-3 bg-blue-600 text-white rounded shadow hover:bg-blue-700"
         >
           Download Service Analytics PDF
         </button>
