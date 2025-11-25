@@ -1,154 +1,178 @@
-import React from "react";
+import React, { useState, useContext } from "react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { ThemeContext } from "../ThemeContext"; 
 
-export default function DailySummary({ customers }) {
-  // 🔥 Ensure we always try to read from localStorage as backup
-  let effectiveCustomers = Array.isArray(customers) ? customers : [];
+const DailySummary = () => {
+  const [excelData, setExcelData] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const { darkMode } = useContext(ThemeContext);
 
-  if (
-    (!effectiveCustomers || effectiveCustomers.length === 0) &&
-    typeof window !== "undefined"
-  ) {
-    try {
-      const stored = window.localStorage.getItem("customers");
-      if (stored) {
-        effectiveCustomers = JSON.parse(stored);
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const data = new Uint8Array(event.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
+
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const parsedData = XLSX.utils.sheet_to_json(sheet);
+
+      setExcelData(parsedData);
+      generateSummary(parsedData);
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  const generateSummary = (data) => {
+    if (!data || data.length === 0) return;
+
+    const totalCalls = data.length;
+    const completedCalls = data.filter(
+      (row) => row.Status?.toLowerCase() === "completed"
+    ).length;
+
+    const pendingCalls = totalCalls - completedCalls;
+
+    const staffStats = {};
+    data.forEach((row) => {
+      if (!staffStats[row.Staff]) {
+        staffStats[row.Staff] = { total: 0, completed: 0 };
       }
-    } catch (err) {
-      console.error("Failed to read customers from localStorage in DailySummary", err);
-    }
-  }
+      staffStats[row.Staff].total++;
+      if (row.Status?.toLowerCase() === "completed")
+        staffStats[row.Staff].completed++;
+    });
 
-  console.log("Daily Summary Using:", effectiveCustomers);
+    setSummary({
+      totalCalls,
+      completedCalls,
+      pendingCalls,
+      staffStats,
+    });
+  };
 
-  if (!effectiveCustomers || effectiveCustomers.length === 0) {
-    return (
-      <div>
-        <h2>Daily AI Summary</h2>
-        <p>No customer data available. Please upload customer sheet first.</p>
-      </div>
+  const downloadPDF = () => {
+    if (!summary) return;
+
+    const doc = new jsPDF();
+
+    // HEADER
+    doc.setFillColor(0, 0, 0);
+    doc.rect(0, 0, 220, 30, "F");
+
+    doc.setTextColor(255, 215, 0);
+    doc.setFontSize(18);
+    doc.text("Daily Summary Report", 70, 20);
+
+    // Logo
+    doc.addImage("/mirrors_logo.png", "PNG", 150, 8, 40, 15);
+
+    // Body section
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(12);
+
+    doc.text(`Total Calls: ${summary.totalCalls}`, 14, 45);
+    doc.text(`Completed Calls: ${summary.completedCalls}`, 14, 55);
+    doc.text(`Pending Calls: ${summary.pendingCalls}`, 14, 65);
+
+    // Staff table
+    const staffTable = Object.entries(summary.staffStats).map(
+      ([staff, stats]) => ({
+        Staff: staff,
+        Total: stats.total,
+        Completed: stats.completed,
+      })
     );
-  }
 
-  const today = new Date();
+    autoTable(doc, {
+      startY: 80,
+      headStyles: { fillColor: [0, 0, 0], textColor: [255, 215, 0] },
+      bodyStyles: { textColor: [0, 0, 0] },
+      head: [["Staff", "Total Calls", "Completed Calls"]],
+      body: staffTable.map((row) => [row.Staff, row.Total, row.Completed]),
+    });
 
-  // High-value, overdue, not yet contacted → HOT customers
-  const hotCustomers = effectiveCustomers.filter((c) => {
-    const lastVisit = c.lastVisit || c.lastvisit || c.LastVisit;
-    if (!lastVisit) return false;
+    doc.setFontSize(10);
+    doc.text("Powered by Salon AI", 14, 290);
 
-    const diffDays =
-      (today - new Date(lastVisit)) / (1000 * 60 * 60 * 24);
-
-    const contacted = (c.contacted || c.Contacted || "").toString().toLowerCase();
-    const isNotContacted = contacted !== "yes";
-
-    return diffDays > 30 && isNotContacted;
-  });
-
-  const contactedCustomers = effectiveCustomers.filter((c) => {
-    const contacted = (c.contacted || c.Contacted || "").toString().toLowerCase();
-    return contacted === "yes";
-  });
-
-  const notContacted = effectiveCustomers.filter((c) => {
-    const contacted = (c.contacted || c.Contacted || "").toString().toLowerCase();
-    return contacted !== "yes";
-  });
-
-  const potentialRevenue = hotCustomers.reduce(
-    (sum, c) => sum + Number(c.revenue || c.Revenue || 0),
-    0
-  );
-
-  const contactedRevenue = contactedCustomers.reduce(
-    (sum, c) => sum + Number(c.revenue || c.Revenue || 0),
-    0
-  );
+    doc.save("Daily_Summary_Report.pdf");
+  };
 
   return (
-    <div>
-      <h2>Daily AI Summary</h2>
+    <div
+      className={`p-6 min-h-screen transition-all ${
+        darkMode ? "bg-[#111] text-yellow-300" : "bg-white text-black"
+      }`}
+    >
+      <h1 className="text-2xl font-bold mb-4">Daily Summary</h1>
 
-      {/* KPI cards */}
-      <div className="stats-row" style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-        <div className="stat-card">
-          <h4>HOT CUSTOMERS TODAY</h4>
-          <p>{hotCustomers.length}</p>
+      <input
+        type="file"
+        onChange={handleFileUpload}
+        className="mb-6 p-2 border rounded bg-white text-black"
+      />
+
+      {summary && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* TOTAL CALLS */}
+          <div
+            className={`p-4 rounded-xl shadow-lg border ${
+              darkMode
+                ? "bg-[#1A1A1A] border-yellow-400"
+                : "bg-gray-100 border-gray-300"
+            }`}
+          >
+            <h2 className="font-bold text-lg">Total Calls</h2>
+            <p className="text-4xl font-extrabold">{summary.totalCalls}</p>
+          </div>
+
+          {/* COMPLETED */}
+          <div
+            className={`p-4 rounded-xl shadow-lg border ${
+              darkMode
+                ? "bg-[#1A1A1A] border-green-400"
+                : "bg-green-100 border-green-300"
+            }`}
+          >
+            <h2 className="font-bold text-lg">Completed</h2>
+            <p className="text-4xl font-extrabold">
+              {summary.completedCalls}
+            </p>
+          </div>
+
+          {/* PENDING */}
+          <div
+            className={`p-4 rounded-xl shadow-lg border ${
+              darkMode
+                ? "bg-[#1A1A1A] border-red-400"
+                : "bg-red-100 border-red-300"
+            }`}
+          >
+            <h2 className="font-bold text-lg">Pending</h2>
+            <p className="text-4xl font-extrabold">{summary.pendingCalls}</p>
+          </div>
         </div>
+      )}
 
-        <div className="stat-card">
-          <h4>CONTACTED CUSTOMERS</h4>
-          <p>{contactedCustomers.length}</p>
-        </div>
-
-        <div className="stat-card">
-          <h4>STILL TO CONTACT</h4>
-          <p>{notContacted.length}</p>
-        </div>
-
-        <div className="stat-card">
-          <h4>POTENTIAL REPEAT REVENUE</h4>
-          <p>₹{potentialRevenue}</p>
-        </div>
-
-        <div className="stat-card">
-          <h4>REVENUE FROM CONTACTED</h4>
-          <p>₹{contactedRevenue}</p>
-        </div>
-      </div>
-
-      {/* AI Summary box */}
-      <div
-        className="ai-summary-box"
-        style={{
-          marginTop: "24px",
-          padding: "16px",
-          borderRadius: "8px",
-          background: "#f3f4ff",
-        }}
-      >
-        {hotCustomers.length === 0 ? (
-          <p>
-            AI didn&apos;t find urgent high-priority rebooking customers today. Focus on
-            premium services, upsells, and creating memorable experiences for walk-ins.
-          </p>
-        ) : (
-          <p>
-            AI identified <strong>{hotCustomers.length}</strong> high-priority customers
-            overdue for rebooking. Contacting them can unlock approximately{" "}
-            <strong>₹{potentialRevenue}</strong> in repeat revenue. Prioritise these
-            customers for calls, WhatsApp reminders, or special offers.
-          </p>
-        )}
-      </div>
-
-      {/* Follow-up Priority List */}
-      <h3 style={{ marginTop: "24px" }}>Follow-up Priority List</h3>
-
-      {hotCustomers.length === 0 ? (
-        <p>✅ No pending high-priority follow-ups. You&apos;re fully caught up!</p>
-      ) : (
-        <table border="1" cellPadding="8" style={{ marginTop: "12px" }}>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Last Visit</th>
-              <th>Service</th>
-              <th>Revenue</th>
-            </tr>
-          </thead>
-          <tbody>
-            {hotCustomers.map((c, index) => (
-              <tr key={index}>
-                <td>{c.name || c.Name}</td>
-                <td>{c.lastVisit || c.lastvisit || c.LastVisit}</td>
-                <td>{c.service || c.Service}</td>
-                <td>{c.revenue || c.Revenue}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {summary && (
+        <button
+          onClick={downloadPDF}
+          className={`mt-8 px-6 py-3 rounded-xl font-bold shadow-lg ${
+            darkMode
+              ? "bg-yellow-400 text-black hover:bg-yellow-500"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+          }`}
+        >
+          Download Daily Summary PDF
+        </button>
       )}
     </div>
   );
-}
+};
+
+export default DailySummary;

@@ -4,10 +4,10 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ThemeContext } from "../ThemeContext";
 
-const ServiceAnalytics = () => {
-  const [data, setData] = useState([]);
+const CustomerProfile = () => {
+  const [rows, setRows] = useState([]);
   const [detectedCols, setDetectedCols] = useState(null);
-  const [serviceStats, setServiceStats] = useState([]);
+  const [customerStats, setCustomerStats] = useState([]);
   const [summary, setSummary] = useState(null);
   const { darkMode } = useContext(ThemeContext);
 
@@ -21,9 +21,10 @@ const ServiceAnalytics = () => {
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const json = XLSX.utils.sheet_to_json(sheet);
 
-      setData(json);
+      setRows(json);
       process(json);
     };
+
     reader.readAsBinaryString(file);
   };
 
@@ -35,74 +36,94 @@ const ServiceAnalytics = () => {
     return null;
   };
 
-  const process = (rows) => {
-    if (!rows || rows.length === 0) return;
+  const process = (data) => {
+    if (!data || data.length === 0) return;
 
-    const keys = Object.keys(rows[0]);
+    const keys = Object.keys(data[0]);
 
-    const serviceCol = pickColumn(keys, ["service", "treatment", "category"]);
-    const revenueCol = pickColumn(keys, ["revenue", "amount", "bill", "value"]);
-    const contactCol = pickColumn(keys, ["contact", "contacted", "status"]);
+    const nameCol = pickColumn(keys, ["name", "customer", "client"]);
+    const visitCol = pickColumn(keys, ["visit", "last"]);
+    const serviceCol = pickColumn(keys, ["service", "treatment"]);
+    const revenueCol = pickColumn(keys, ["revenue", "amount"]);
+    const contactCol = pickColumn(keys, ["contact", "contacted"]);
 
-    const detected = { serviceCol, revenueCol, contactCol };
+    const detected = {
+      nameCol,
+      visitCol,
+      serviceCol,
+      revenueCol,
+      contactCol,
+    };
     setDetectedCols(detected);
 
-    const serviceMap = {};
+    const map = {};
 
-    rows.forEach((row) => {
-      const service = serviceCol ? row[serviceCol] || "Unknown" : "Unknown";
+    data.forEach((row) => {
+      const name = nameCol ? row[nameCol] || "Unknown" : "Unknown";
       const revenue = revenueCol ? parseFloat(row[revenueCol]) || 0 : 0;
-      const contacted = contactCol ? String(row[contactCol]).toLowerCase() : null;
+      const contacted = contactCol ? String(row[contactCol]).toLowerCase() : "";
+      const service = serviceCol ? row[serviceCol] : "-";
+      const visit = visitCol ? row[visitCol] : "-";
 
-      if (!serviceMap[service]) {
-        serviceMap[service] = {
-          count: 0,
-          revenue: 0,
+      if (!map[name]) {
+        map[name] = {
+          visits: 0,
+          totalRevenue: 0,
+          lastVisit: visit,
+          services: new Set(),
           contacted: 0,
           notContacted: 0,
         };
       }
 
-      serviceMap[service].count++;
-      serviceMap[service].revenue += revenue;
+      map[name].visits += 1;
+      map[name].totalRevenue += revenue;
+      if (service) map[name].services.add(service);
+      map[name].lastVisit = visit;
 
       if (contactCol) {
         if (contacted.includes("yes") || contacted.includes("done"))
-          serviceMap[service].contacted++;
-        else serviceMap[service].notContacted++;
+          map[name].contacted++;
+        else map[name].notContacted++;
       }
     });
 
-    const stats = Object.entries(serviceMap).map(([name, s]) => ({
-      service: name,
-      count: s.count,
-      revenue: s.revenue,
+    const stats = Object.entries(map).map(([name, s]) => ({
+      name,
+      visits: s.visits,
+      lastVisit: s.lastVisit,
+      totalRevenue: s.totalRevenue,
+      services: Array.from(s.services).join(", "),
       contacted: s.contacted,
       notContacted: s.notContacted,
     }));
 
-    stats.sort((a, b) => b.revenue - a.revenue);
+    stats.sort((a, b) => b.totalRevenue - a.totalRevenue);
 
-    setServiceStats(stats);
+    setCustomerStats(stats);
+
     setSummary({
-      totalServices: stats.reduce((a, b) => a + b.count, 0),
-      totalRevenue: stats.reduce((a, b) => a + b.revenue, 0),
-      topService: stats[0]?.service || "-",
-      topRevenue: stats[0]?.revenue || 0,
+      totalCustomers: stats.length,
+      totalRevenue: stats.reduce((a, b) => a + b.totalRevenue, 0),
+      avgRevenue:
+        stats.length > 0
+          ? (stats.reduce((a, b) => a + b.totalRevenue, 0) / stats.length).toFixed(0)
+          : 0,
+      repeatCustomers: stats.filter((c) => c.visits > 1).length,
     });
   };
 
   const downloadPDF = () => {
     if (!summary) return;
 
-    const doc = new jsPDF();
+    const doc = new jsPDF("p", "mm");
 
     // Header
     doc.setFillColor(0, 0, 0);
     doc.rect(0, 0, 220, 30, "F");
     doc.setTextColor(255, 215, 0);
     doc.setFontSize(18);
-    doc.text("Service Analytics Report", 60, 20);
+    doc.text("Customer Profile Report", 60, 20);
 
     try {
       doc.addImage("/mirrors_logo.png", "PNG", 150, 8, 40, 15);
@@ -111,28 +132,30 @@ const ServiceAnalytics = () => {
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(11);
 
-    doc.text(`Total Services Rendered: ${summary.totalServices}`, 14, 50);
+    doc.text(`Total Customers: ${summary.totalCustomers}`, 14, 50);
     doc.text(`Total Revenue: ₹${summary.totalRevenue}`, 14, 58);
-    doc.text(`Top Service: ${summary.topService}`, 14, 66);
-    doc.text(`Top Service Revenue: ₹${summary.topRevenue}`, 14, 74);
+    doc.text(`Avg Revenue per Customer: ₹${summary.avgRevenue}`, 14, 66);
+    doc.text(`Repeat Customers: ${summary.repeatCustomers}`, 14, 74);
 
     const head = [
       [
-        "Service",
-        "Count",
-        "Revenue",
+        "Name",
+        "Visits",
+        "Last Visit",
+        "Total Revenue",
+        "Services",
         detectedCols?.contactCol ? "Contacted" : "",
-        detectedCols?.contactCol ? "Not Contacted" : "",
       ].filter(Boolean),
     ];
 
-    const body = serviceStats.map((s) =>
+    const body = customerStats.map((c) =>
       [
-        s.service,
-        s.count,
-        s.revenue,
-        detectedCols?.contactCol ? s.contacted : null,
-        detectedCols?.contactCol ? s.notContacted : null,
+        c.name,
+        c.visits,
+        c.lastVisit,
+        `₹${c.totalRevenue}`,
+        c.services,
+        detectedCols?.contactCol ? c.contacted : null,
       ].filter(Boolean)
     );
 
@@ -147,7 +170,7 @@ const ServiceAnalytics = () => {
     doc.setFontSize(10);
     doc.text("Powered by Salon AI", 80, 290);
 
-    doc.save("Service_Analytics_Report.pdf");
+    doc.save("Customer_Profile_Report.pdf");
   };
 
   return (
@@ -156,24 +179,13 @@ const ServiceAnalytics = () => {
         darkMode ? "bg-[#111] text-yellow-300" : "bg-white text-black"
       }`}
     >
-      <h1 className="text-2xl font-bold mb-6">Service Analytics</h1>
+      <h1 className="text-2xl font-bold mb-4">Customer Profiles</h1>
 
       <input
         type="file"
         onChange={handleUpload}
         className="mb-6 p-2 border rounded bg-white text-black"
       />
-
-      {detectedCols && (
-        <div className="text-sm mb-6">
-          <p className="font-semibold">Detected Columns:</p>
-          <ul className="list-disc list-inside space-y-1">
-            <li>Service: {detectedCols.serviceCol || "Not found"}</li>
-            <li>Revenue: {detectedCols.revenueCol || "Not found"}</li>
-            <li>Contacted: {detectedCols.contactCol || "Not found"}</li>
-          </ul>
-        </div>
-      )}
 
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -184,8 +196,8 @@ const ServiceAnalytics = () => {
                 : "bg-blue-100 border-blue-300"
             }`}
           >
-            <h2 className="font-semibold text-sm">Total Services</h2>
-            <p className="text-2xl font-bold">{summary.totalServices}</p>
+            <h2 className="text-sm font-semibold mb-1">Total Customers</h2>
+            <p className="text-2xl font-bold">{summary.totalCustomers}</p>
           </div>
 
           <div
@@ -195,8 +207,8 @@ const ServiceAnalytics = () => {
                 : "bg-green-100 border-green-300"
             }`}
           >
-            <h2 className="font-semibold text-sm">Total Revenue</h2>
-            <p className="text-2-3xl font-bold">₹{summary.totalRevenue}</p>
+            <h2 className="text-sm font-semibold mb-1">Total Revenue</h2>
+            <p className="text-2xl font-bold">₹{summary.totalRevenue}</p>
           </div>
 
           <div
@@ -206,26 +218,26 @@ const ServiceAnalytics = () => {
                 : "bg-purple-100 border-purple-300"
             }`}
           >
-            <h2 className="font-semibold text-sm">Top Service</h2>
-            <p className="text-2xl font-bold">{summary.topService}</p>
+            <h2 className="text-sm font-semibold mb-1">Repeat Customers</h2>
+            <p className="text-2xl font-bold">{summary.repeatCustomers}</p>
           </div>
         </div>
       )}
 
-      {serviceStats.length > 0 && (
+      {summary && (
         <button
           onClick={downloadPDF}
-          className={`mt-4 px-6 py-3 rounded-xl font-bold shadow-lg ${
+          className={`mt-6 px-6 py-3 rounded-xl font-bold shadow-lg ${
             darkMode
               ? "bg-yellow-400 text-black hover:bg-yellow-500"
               : "bg-blue-600 text-white hover:bg-blue-700"
           }`}
         >
-          Download Service Analytics PDF
+          Download Customer Profile PDF
         </button>
       )}
     </div>
   );
 };
 
-export default ServiceAnalytics;
+export default CustomerProfile;

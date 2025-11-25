@@ -1,37 +1,53 @@
 import React, { useState } from "react";
+import axios from "axios";
+import * as XLSX from "xlsx";
 
-const CustomerUpload = () => {
-  const [data, setData] = useState([]);
-
-  // Load SheetJS from CDN dynamically
-  const loadSheetJS = async () => {
-    if (!window.XLSX) {
-      await new Promise((resolve) => {
-        const script = document.createElement("script");
-        script.src = "https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js";
-        script.onload = resolve;
-        document.body.appendChild(script);
-      });
-    }
-    return window.XLSX;
-  };
+export default function CustomerUpload() {
+  const [rows, setRows] = useState([]);
 
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    const XLSX = await loadSheetJS();
-
     const reader = new FileReader();
-    reader.onload = (e) => {
+
+    reader.onload = async (e) => {
       const data = new Uint8Array(e.target.result);
       const workbook = XLSX.read(data, { type: "array" });
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
 
-      const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-      console.log("Parsed:", json);
+      // Parse as OBJECTS, not arrays
+      const parsed = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+      console.log("Parsed JSON:", parsed);
 
-      setData(json);
+      // Normalize columns
+      const normalized = parsed.map((row) => ({
+        name: row.name || row.Name || "",
+        lastVisit: row.lastVisit || row.lastvisit || row["last visit"] || "",
+        service: row.service || row.Service || "",
+        revenue: Number(row.revenue || row.Revenue || 0),
+        contacted: row.contacted || row.Contacted || "No",
+      }));
+
+      console.log("Normalized:", normalized);
+
+      setRows(normalized);
+
+      // Save to sessionStorage
+      sessionStorage.setItem("customers", JSON.stringify(normalized));
+
+      // 🔥 SEND TO BACKEND (KV)
+      try {
+        const res = await axios.post("/api/customers", {
+          customers: normalized,
+        });
+        console.log("KV Save Response:", res.data);
+
+        alert("Customer data uploaded successfully!");
+      } catch (err) {
+        console.error("KV Upload Error:", err);
+        alert("Upload failed. Check console.");
+      }
     };
 
     reader.readAsArrayBuffer(file);
@@ -49,16 +65,25 @@ const CustomerUpload = () => {
       />
 
       <div className="mt-6">
-        {data.length > 0 ? (
+        {rows.length > 0 ? (
           <table className="min-w-full border">
+            <thead>
+              <tr>
+                <th className="border p-2">Name</th>
+                <th className="border p-2">Last Visit</th>
+                <th className="border p-2">Service</th>
+                <th className="border p-2">Revenue</th>
+                <th className="border p-2">Contacted</th>
+              </tr>
+            </thead>
             <tbody>
-              {data.map((row, i) => (
+              {rows.map((row, i) => (
                 <tr key={i}>
-                  {row.map((col, j) => (
-                    <td key={j} className="border p-2">
-                      {col}
-                    </td>
-                  ))}
+                  <td className="border p-2">{row.name}</td>
+                  <td className="border p-2">{row.lastVisit}</td>
+                  <td className="border p-2">{row.service}</td>
+                  <td className="border p-2">{row.revenue}</td>
+                  <td className="border p-2">{row.contacted}</td>
                 </tr>
               ))}
             </tbody>
@@ -69,6 +94,4 @@ const CustomerUpload = () => {
       </div>
     </div>
   );
-};
-
-export default CustomerUpload;
+}
