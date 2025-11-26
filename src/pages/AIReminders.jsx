@@ -4,22 +4,24 @@ import axios from "axios";
 
 export default function AIReminders() {
   const [customers, setCustomers] = useState(() => {
+    if (typeof window === "undefined") return [];
     const stored = sessionStorage.getItem("customers");
-    return stored ? JSON.parse(stored) : null;
+    return stored ? JSON.parse(stored) : [];
   });
 
   const [loading, setLoading] = useState(false);
 
   // Fetch customers from KV if not in sessionStorage
   useEffect(() => {
-    if (customers !== null) return;
+    if (customers.length > 0) return;
 
     async function fetchCustomers() {
       try {
         setLoading(true);
         const res = await axios.get("/api/customers");
-        setCustomers(res.data);
-        sessionStorage.setItem("customers", JSON.stringify(res.data));
+        const data = Array.isArray(res.data) ? res.data : [];
+        setCustomers(data);
+        sessionStorage.setItem("customers", JSON.stringify(data));
       } catch (error) {
         console.error("AI Reminders: failed to fetch /api/customers", error);
       } finally {
@@ -34,7 +36,7 @@ export default function AIReminders() {
     return <div style={{ padding: "24px" }}>Loading reminders…</div>;
   }
 
-  if (!customers || customers.length === 0) {
+  if (!Array.isArray(customers) || customers.length === 0) {
     return (
       <div style={{ padding: "24px" }}>
         Upload customer data to generate AI reminders.
@@ -51,8 +53,11 @@ export default function AIReminders() {
     return isNaN(d.getTime()) ? null : d;
   };
 
+  // SAFE customers list
+  const safeCustomers = Array.isArray(customers) ? customers : [];
+
   // Process and categorize reminders
-  const processed = customers.map((c) => {
+  const processed = safeCustomers.map((c) => {
     const lastVisit = parseDate(c.lastVisit);
     const daysSinceLastVisit =
       lastVisit != null
@@ -60,9 +65,9 @@ export default function AIReminders() {
         : null;
 
     const contacted = String(c.contacted || "No").toLowerCase() === "yes";
-    const isHighValue = Number(c.revenue || 0) >= 1500;
+    const revenue = Number(c.revenue || 0);
+    const isHighValue = revenue >= 1500;
 
-    // Reminders Categories
     const dueForFollowUp =
       !contacted && daysSinceLastVisit !== null && daysSinceLastVisit >= 30;
 
@@ -83,6 +88,7 @@ export default function AIReminders() {
       daysSinceLastVisit,
       contacted,
       isHighValue,
+      revenue,
       dueForFollowUp,
       urgent,
       churnRisk,
@@ -102,7 +108,7 @@ export default function AIReminders() {
         maximize rebookings and prevent revenue loss.
       </p>
 
-      {/* Reminders Summary Cards */}
+      {/* Summary Cards */}
       <div
         style={{
           display: "grid",
@@ -116,19 +122,10 @@ export default function AIReminders() {
           count={urgentList.length}
           color="#dc2626"
         />
-        <Card
-          label="Follow-up Needed"
-          count={followUpList.length}
-          color="#2563eb"
-        />
-        <Card
-          label="Churn Risk"
-          count={churnRiskList.length}
-          color="#b45309"
-        />
+        <Card label="Follow-up Needed" count={followUpList.length} color="#2563eb" />
+        <Card label="Churn Risk" count={churnRiskList.length} color="#b45309" />
       </div>
 
-      {/* Urgent Section */}
       <Section
         title="🔥 Urgent — High-Value Customers (Action Needed Today)"
         color="#fee2e2"
@@ -136,7 +133,6 @@ export default function AIReminders() {
         list={urgentList}
       />
 
-      {/* Follow-up Section */}
       <Section
         title="📞 Follow-Up Customers"
         color="#eff6ff"
@@ -144,7 +140,6 @@ export default function AIReminders() {
         list={followUpList}
       />
 
-      {/* Churn Risk Section */}
       <Section
         title="⚠️ High Churn Risk (Haven’t Visited in 120+ Days)"
         color="#fff7ed"
@@ -207,9 +202,7 @@ function Section({ title, list, color, border }) {
             <tr>
               <th style={{ textAlign: "left", padding: "8px" }}>Name</th>
               <th style={{ textAlign: "left", padding: "8px" }}>Service</th>
-              <th style={{ textAlign: "left", padding: "8px" }}>
-                Last Visit
-              </th>
+              <th style={{ textAlign: "left", padding: "8px" }}>Last Visit</th>
               <th style={{ textAlign: "right", padding: "8px" }}>Revenue</th>
               <th style={{ textAlign: "right", padding: "8px" }}>
                 Days Since Visit

@@ -1,60 +1,105 @@
-import React, { useContext } from "react";
-import { Routes, Route, Link } from "react-router-dom";
-import { ThemeContext } from "./ThemeContext.jsx";
+// src/App.jsx
+import React, { useEffect, useState } from "react";
+import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 
-import Dashboard from "./pages/Dashboard.jsx";
-import UploadCustomers from "./pages/UploadCustomers.jsx";
-import DailySummary from "./pages/DailySummary.jsx";
-import AIReminders from "./pages/AIReminders.jsx";
-import Performance from "./pages/Performance.jsx";
-import ServiceAnalytics from "./pages/ServiceAnalytics.jsx";
-import CustomerProfile from "./pages/CustomerProfile.jsx";
+import Dashboard from "./pages/Dashboard";
+import UploadCustomers from "./pages/CustomerUpload";
+import DailySummary from "./pages/DailySummary";
+import AIReminders from "./pages/AIReminders";
+import ServiceAnalytics from "./pages/ServiceAnalytics";
+import CustomerProfiles from "./pages/CustomerProfile";
 
 export default function App() {
-  const { darkMode, setDarkMode } = useContext(ThemeContext);
+  const [darkMode, setDarkMode] = useState(() => {
+    // Safe check for Vercel SSR
+    if (typeof window === "undefined") return false;
+
+    const saved = localStorage.getItem("theme");
+    if (saved) return saved === "dark";
+
+    // Follow system theme
+    const prefersDark = window.matchMedia(
+      "(prefers-color-scheme: dark)"
+    ).matches;
+
+    return prefersDark;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (darkMode) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+  }, [darkMode]);
+
+  const toggleTheme = () => {
+    setDarkMode((prev) => !prev);
+  };
 
   return (
-    <div
-      className={`flex h-screen ${
-        darkMode ? "bg-[#111] text-yellow-300" : "bg-white text-black"
-      }`}
-    >
-      {/* Sidebar */}
-      <aside
-        className={`w-60 p-4 space-y-2 ${
-          darkMode ? "bg-[#161616]" : "bg-gray-200"
-        }`}
+    <Router>
+      <div
+        style={{
+          padding: "16px",
+          background: darkMode ? "#0f172a" : "#ffffff",
+          minHeight: "100vh",
+          color: darkMode ? "#f8fafc" : "#0f172a",
+          transition: "0.3s ease",
+        }}
       >
-        <h1 className="text-xl font-bold mb-4">Salon AI Dashboard</h1>
+        {/* Navigation */}
+        <nav style={{ marginBottom: "20px" }}>
+          <Link style={{ marginRight: "12px" }} to="/">
+            Dashboard
+          </Link>
+          <Link style={{ marginRight: "12px" }} to="/upload">
+            Upload Customers
+          </Link>
+          <Link style={{ marginRight: "12px" }} to="/summary">
+            Daily Summary
+          </Link>
+          <Link style={{ marginRight: "12px" }} to="/reminders">
+            AI Reminders
+          </Link>
+          <Link style={{ marginRight: "12px" }} to="/analytics">
+            Service Analytics
+          </Link>
+          <Link style={{ marginRight: "12px" }} to="/profiles">
+            Customer Profiles
+          </Link>
 
-        <Link to="/" className="block p-2">Dashboard</Link>
-        <Link to="/upload-customers" className="block p-2">Upload Customers</Link>
-        <Link to="/daily-summary" className="block p-2">Daily Summary</Link>
-        <Link to="/ai-reminders" className="block p-2">AI Reminders</Link>
-        <Link to="/performance" className="block p-2">Performance</Link>
-        <Link to="/service-analytics" className="block p-2">Service Analytics</Link>
-        <Link to="/customer-profiles" className="block p-2">Customer Profiles</Link>
+          {/* DARK MODE BUTTON */}
+          <button
+            onClick={toggleTheme}
+            style={{
+              marginLeft: "12px",
+              padding: "6px 12px",
+              borderRadius: "8px",
+              border: "1px solid #e2e8f0",
+              cursor: "pointer",
+              background: darkMode ? "#1e293b" : "#f1f5f9",
+              color: darkMode ? "#f8fafc" : "#0f172a",
+            }}
+          >
+            {darkMode ? "☀ Light Mode" : "🌙 Dark Mode"}
+          </button>
+        </nav>
 
-        <button
-          onClick={() => setDarkMode(!darkMode)}
-          className="mt-6 w-full p-2 rounded font-bold bg-black text-yellow-400"
-        >
-          {darkMode ? "☀ Light Mode" : "🌙 Dark Mode"}
-        </button>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 p-6 overflow-auto">
+        {/* PAGE ROUTES */}
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/upload-customers" element={<UploadCustomers />} />
-          <Route path="/daily-summary" element={<DailySummary />} />
-          <Route path="/ai-reminders" element={<AIReminders />} />
-          <Route path="/performance" element={<Performance />} />
-          <Route path="/service-analytics" element={<ServiceAnalytics />} />
-          <Route path="/customer-profiles" element={<CustomerProfile />} />
+          <Route path="/upload" element={<UploadCustomers />} />
+          <Route path="/summary" element={<DailySummary />} />
+          <Route path="/reminders" element={<AIReminders />} />
+          <Route path="/analytics" element={<ServiceAnalytics />} />
+          <Route path="/profiles" element={<CustomerProfiles />} />
         </Routes>
-      </main>
-    </div>
+      </div>
+    </Router>
   );
 }
