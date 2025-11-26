@@ -1,18 +1,27 @@
+// src/Layout.jsx
 import React from "react";
 import Sidebar from "./components/Sidebar";
 
-export default function Layout({ children }) {
-  return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#fafafa" }}>
-      {/* Sidebar */}
-      <Sidebar />
+export default function Layout({ children, darkMode }) {
+  const bg = darkMode ? "#0b0f1a" : "#ffffff";
+  const text = darkMode ? "#ffffff" : "#0b0f1a";
 
-      {/* Main Content */}
+  return (
+    <div
+      style={{
+        display: "flex",
+        height: "100vh",
+        background: bg,
+        color: text,
+      }}
+    >
+      <Sidebar darkMode={darkMode} />
+
       <div
         style={{
           flex: 1,
-          padding: "30px 40px",
           overflowY: "auto",
+          padding: "24px",
         }}
       >
         {children}
