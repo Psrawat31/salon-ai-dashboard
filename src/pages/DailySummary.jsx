@@ -1,145 +1,74 @@
-import React, { useState } from "react";
+import { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 
-const DailySummary = () => {
+export default function DailySummary() {
   const [excelData, setExcelData] = useState([]);
-  const [summary, setSummary] = useState(null);
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem("uploadedData");
+    if (saved) {
+      setExcelData(JSON.parse(saved));
+    }
+  }, []);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
-
     reader.onload = (event) => {
       const data = new Uint8Array(event.target.result);
       const workbook = XLSX.read(data, { type: "array" });
 
-      // ---------------------------
-      // 🔥 FIX FOR VERCEL DEPLOYMENT
-      // ---------------------------
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      let parsedData = XLSX.utils.sheet_to_json(sheet);
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
 
-      // Ensure parsedData is always an array
-      if (!Array.isArray(parsedData)) {
-        parsedData = [];
-      }
+      const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
-      // Ensure rows are valid objects
-      parsedData = parsedData.filter(
-        (row) => row && typeof row === "object"
-      );
-
-      setExcelData(parsedData);
-      generateSummary(parsedData);
+      sessionStorage.setItem("uploadedData", JSON.stringify(json));
+      setExcelData(json);
     };
 
     reader.readAsArrayBuffer(file);
   };
 
-  const generateSummary = (data) => {
-    if (!data || data.length === 0) return;
-
-    const totalCalls = data.length;
-    const completedCalls = data.filter(
-      (row) => row.Status?.toLowerCase() === "completed"
-    ).length;
-    const pendingCalls = totalCalls - completedCalls;
-
-    const staffStats = {};
-    data.forEach((row) => {
-      if (!staffStats[row.Staff]) {
-        staffStats[row.Staff] = { total: 0, completed: 0 };
-      }
-      staffStats[row.Staff].total++;
-      if (row.Status?.toLowerCase() === "completed") {
-        staffStats[row.Staff].completed++;
-      }
-    });
-
-    setSummary({
-      totalCalls,
-      completedCalls,
-      pendingCalls,
-      staffStats,
-    });
-  };
-
-  const downloadPDF = () => {
-    if (!summary) return;
-
-    const doc = new jsPDF();
-
-    try {
-      doc.addImage("/mirrors_logo.png", "PNG", 80, 10, 50, 20);
-    } catch (e) {}
-
-    doc.setFontSize(18);
-    doc.text("Daily Summary Report", 70, 40);
-
-    doc.setFontSize(12);
-    doc.text(`Total Calls: ${summary.totalCalls}`, 14, 60);
-    doc.text(`Completed Calls: ${summary.completedCalls}`, 14, 70);
-    doc.text(`Pending Calls: ${summary.pendingCalls}`, 14, 80);
-
-    const staffTable = Object.entries(summary.staffStats).map(
-      ([staff, stats]) => ({
-        Staff: staff,
-        Total: stats.total,
-        Completed: stats.completed,
-      })
-    );
-
-    autoTable(doc, {
-      startY: 95,
-      head: [["Staff", "Total Calls", "Completed Calls"]],
-      body: staffTable.map((row) => [row.Staff, row.Total, row.Completed]),
-    });
-
-    doc.setFontSize(10);
-    doc.text("Powered by Salon AI", 80, 290);
-
-    doc.save("Daily_Summary_Report.pdf");
-  };
-
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Daily Summary</h1>
+      <h1 className="text-3xl font-bold mb-4">Daily Summary</h1>
 
-      <input type="file" onChange={handleFileUpload} className="mb-4" />
+      <input
+        type="file"
+        accept=".xlsx, .xls"
+        onChange={handleFileUpload}
+        className="border p-2 mb-4"
+      />
 
-      {summary && (
-        <div className="grid grid-cols-3 gap-4">
-          <div className="p-4 bg-gray-100 rounded shadow">
-            <h2 className="font-bold text-lg">Total Calls</h2>
-            <p className="text-3xl">{summary.totalCalls}</p>
-          </div>
-
-          <div className="p-4 bg-green-100 rounded shadow">
-            <h2 className="font-bold text-lg">Completed</h2>
-            <p className="text-3xl">{summary.completedCalls}</p>
-          </div>
-
-          <div className="p-4 bg-red-100 rounded shadow">
-            <h2 className="font-bold text-lg">Pending</h2>
-            <p className="text-3xl">{summary.pendingCalls}</p>
-          </div>
-        </div>
-      )}
-
-      {summary && (
-        <button
-          onClick={downloadPDF}
-          className="mt-6 px-6 py-3 bg-blue-600 text-white rounded shadow hover:bg-blue-700"
-        >
-          Download Daily Summary PDF
-        </button>
+      {excelData.length === 0 ? (
+        <p className="text-gray-600">Upload an Excel file to view summary.</p>
+      ) : (
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              {Object.keys(excelData[0]).map((header) => (
+                <th key={header} className="border p-2 bg-gray-100">
+                  {header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {excelData.map((row, i) => (
+              <tr key={i}>
+                {Object.values(row).map((value, j) => (
+                  <td key={j} className="border p-2">
+                    {value}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );
-};
-
-export default DailySummary;
+}

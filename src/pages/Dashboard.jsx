@@ -46,7 +46,8 @@ export default function Dashboard() {
     return isNaN(d.getTime()) ? null : d;
   };
 
-  const data = (customers || []).map((c) => {
+    const safeCustomers = Array.isArray(customers) ? customers : [];
+    const data = safeCustomers.map((c) => {
     const lastVisitDate = parseDate(c.lastVisit);
     const daysSinceLastVisit =
       lastVisitDate != null
