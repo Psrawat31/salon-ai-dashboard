@@ -1,45 +1,31 @@
 // src/pages/AIReminders.jsx
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 
-export default function AIReminders() {
+export default function AIReminders({ darkMode }) {
   const [customers, setCustomers] = useState(() => {
-    if (typeof window === "undefined") return [];
     const stored = sessionStorage.getItem("customers");
-    return stored ? JSON.parse(stored) : [];
+    return stored ? JSON.parse(stored) : null;
   });
 
-  const [loading, setLoading] = useState(false);
+  const theme = {
+    bg: darkMode ? "#020617" : "#f8fafc",
+    card: darkMode ? "#0f172a" : "#ffffff",
+    border: darkMode ? "#1e293b" : "#e5e7eb",
+    text: darkMode ? "#f8fafc" : "#0f172a",
+    sub: darkMode ? "#cbd5e1" : "#6b7280",
+    highlightRed: darkMode ? "#7f1d1d" : "#fee2e2",
+    highlightBlue: darkMode ? "#1e40af" : "#dbeafe",
+    highlightYellow: darkMode ? "#78350f" : "#fef3c7",
+  };
 
-  // Fetch customers from KV if not in sessionStorage
-  useEffect(() => {
-    if (customers.length > 0) return;
-
-    async function fetchCustomers() {
-      try {
-        setLoading(true);
-        const res = await axios.get("/api/customers");
-        const data = Array.isArray(res.data) ? res.data : [];
-        setCustomers(data);
-        sessionStorage.setItem("customers", JSON.stringify(data));
-      } catch (error) {
-        console.error("AI Reminders: failed to fetch /api/customers", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchCustomers();
-  }, [customers]);
-
-  if (loading) {
-    return <div style={{ padding: "24px" }}>Loading reminders…</div>;
-  }
-
-  if (!Array.isArray(customers) || customers.length === 0) {
+  // If no customers uploaded
+  if (!customers) {
     return (
-      <div style={{ padding: "24px" }}>
-        Upload customer data to generate AI reminders.
+      <div style={{ padding: "24px", color: theme.text }}>
+        <h1>AI Reminders</h1>
+        <p style={{ color: theme.sub }}>
+          Upload customer data first to generate reminder actions.
+        </p>
       </div>
     );
   }
@@ -47,186 +33,208 @@ export default function AIReminders() {
   const today = new Date();
   const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-  const parseDate = (value) => {
-    if (!value) return null;
-    const d = new Date(value);
-    return isNaN(d.getTime()) ? null : d;
+  // Convert date
+  const parseDate = (d) => {
+    const dt = new Date(d);
+    return isNaN(dt.getTime()) ? null : dt;
   };
 
-  // SAFE customers list
-  const safeCustomers = Array.isArray(customers) ? customers : [];
-
-  // Process and categorize reminders
-  const processed = safeCustomers.map((c) => {
-    const lastVisit = parseDate(c.lastVisit);
-    const daysSinceLastVisit =
-      lastVisit != null
-        ? Math.floor((today - lastVisit) / MS_PER_DAY)
-        : null;
-
+  // Calculate metrics
+  const enriched = customers.map((c) => {
+    const last = parseDate(c.lastVisit);
+    const days = last ? Math.floor((today - last) / MS_PER_DAY) : null;
     const contacted = String(c.contacted || "No").toLowerCase() === "yes";
-    const revenue = Number(c.revenue || 0);
-    const isHighValue = revenue >= 1500;
-
-    const dueForFollowUp =
-      !contacted && daysSinceLastVisit !== null && daysSinceLastVisit >= 30;
-
-    const urgent =
-      !contacted &&
-      isHighValue &&
-      daysSinceLastVisit !== null &&
-      daysSinceLastVisit > 45;
-
-    const churnRisk =
-      !contacted &&
-      daysSinceLastVisit !== null &&
-      daysSinceLastVisit >= 120;
-
     return {
       ...c,
-      lastVisitDate: lastVisit,
-      daysSinceLastVisit,
+      lastDate: last,
+      daysSince: days,
       contacted,
-      isHighValue,
-      revenue,
-      dueForFollowUp,
-      urgent,
-      churnRisk,
+      revenue: Number(c.revenue || 0),
     };
   });
 
-  // Categories for UI
-  const urgentList = processed.filter((c) => c.urgent);
-  const followUpList = processed.filter((c) => c.dueForFollowUp);
-  const churnRiskList = processed.filter((c) => c.churnRisk);
+  // Categories
+  const urgentHighValue = enriched.filter(
+    (c) => c.revenue >= 1500 && !c.contacted && c.daysSince > 30
+  );
+
+  const followUps = enriched.filter(
+    (c) => !c.contacted && c.daysSince > 30 && c.revenue < 1500
+  );
+
+  const churnRisk = enriched.filter((c) => c.daysSince >= 120);
+
+  // Card style generator
+  const cardStyle = (bgColor) => ({
+    background: bgColor,
+    borderRadius: "14px",
+    padding: "16px",
+    marginBottom: "20px",
+    border: `1px solid ${theme.border}`,
+    color: theme.text,
+  });
+
+  // Table header style
+  const th = {
+    fontSize: "14px",
+    color: theme.sub,
+    paddingBottom: "6px",
+  };
+
+  const td = {
+    padding: "8px 0",
+    fontSize: "15px",
+    color: theme.text,
+    borderBottom: `1px solid ${theme.border}`,
+  };
 
   return (
-    <div style={{ padding: "24px" }}>
-      <h2 style={{ fontSize: "24px", marginBottom: "4px" }}>AI Reminders</h2>
-      <p style={{ color: "#6b7280", marginBottom: "20px" }}>
+    <div style={{ padding: "24px", color: theme.text }}>
+      <h1 style={{ marginBottom: "6px" }}>AI Reminders</h1>
+      <p style={{ color: theme.sub, marginBottom: "24px" }}>
         Genie automatically identifies customers who need attention today to
         maximize rebookings and prevent revenue loss.
       </p>
 
-      {/* Summary Cards */}
+      {/* SUMMARY CARDS */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
           gap: "16px",
-          marginBottom: "24px",
+          marginBottom: "20px",
         }}
       >
-        <Card
-          label="Urgent — High Value & Overdue"
-          count={urgentList.length}
-          color="#dc2626"
-        />
-        <Card label="Follow-up Needed" count={followUpList.length} color="#2563eb" />
-        <Card label="Churn Risk" count={churnRiskList.length} color="#b45309" />
+        {/* Urgent */}
+        <div style={{ ...cardStyle(theme.card) }}>
+          <div style={{ color: theme.sub, fontSize: "12px" }}>
+            Urgent — High Value & Overdue
+          </div>
+          <div style={{ fontSize: "32px", fontWeight: 700 }}>
+            {urgentHighValue.length}
+          </div>
+        </div>
+
+        {/* Follow Up */}
+        <div style={{ ...cardStyle(theme.card) }}>
+          <div style={{ color: theme.sub, fontSize: "12px" }}>
+            Follow-up Needed
+          </div>
+          <div style={{ fontSize: "32px", fontWeight: 700 }}>
+            {followUps.length}
+          </div>
+        </div>
+
+        {/* Churn */}
+        <div style={{ ...cardStyle(theme.card) }}>
+          <div style={{ color: theme.sub, fontSize: "12px" }}>Churn Risk</div>
+          <div style={{ fontSize: "32px", fontWeight: 700 }}>
+            {churnRisk.length}
+          </div>
+        </div>
       </div>
 
-      <Section
-        title="🔥 Urgent — High-Value Customers (Action Needed Today)"
-        color="#fee2e2"
-        border="#fecaca"
-        list={urgentList}
-      />
+      {/* URGENT HIGH VALUE */}
+      <div style={cardStyle(theme.highlightRed)}>
+        <h3 style={{ marginBottom: "12px", color: theme.text }}>
+          🔥 Urgent — High-Value Customers (Action Needed Today)
+        </h3>
 
-      <Section
-        title="📞 Follow-Up Customers"
-        color="#eff6ff"
-        border="#bfdbfe"
-        list={followUpList}
-      />
-
-      <Section
-        title="⚠️ High Churn Risk (Haven’t Visited in 120+ Days)"
-        color="#fff7ed"
-        border="#fed7aa"
-        list={churnRiskList}
-      />
-    </div>
-  );
-}
-
-/* -------------------------------------------
-   Reusable Card Component
--------------------------------------------- */
-function Card({ label, count, color }) {
-  return (
-    <div
-      style={{
-        padding: "16px",
-        borderRadius: "12px",
-        border: "1px solid #e5e7eb",
-        background: "#ffffff",
-      }}
-    >
-      <div style={{ fontSize: "12px", color: "#6b7280" }}>{label}</div>
-      <div
-        style={{
-          fontSize: "28px",
-          fontWeight: 600,
-          color: color,
-          marginTop: "6px",
-        }}
-      >
-        {count}
-      </div>
-    </div>
-  );
-}
-
-/* -------------------------------------------
-   Section Component
--------------------------------------------- */
-function Section({ title, list, color, border }) {
-  return (
-    <div
-      style={{
-        marginBottom: "32px",
-        padding: "16px",
-        borderRadius: "12px",
-        background: color,
-        border: `1px solid ${border}`,
-      }}
-    >
-      <h3 style={{ fontSize: "18px", marginBottom: "12px" }}>{title}</h3>
-
-      {list.length === 0 ? (
-        <p style={{ color: "#6b7280" }}>No customers in this category.</p>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", padding: "8px" }}>Name</th>
-              <th style={{ textAlign: "left", padding: "8px" }}>Service</th>
-              <th style={{ textAlign: "left", padding: "8px" }}>Last Visit</th>
-              <th style={{ textAlign: "right", padding: "8px" }}>Revenue</th>
-              <th style={{ textAlign: "right", padding: "8px" }}>
-                Days Since Visit
-              </th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {list.map((c, index) => (
-              <tr key={index}>
-                <td style={{ padding: "8px" }}>{c.name}</td>
-                <td style={{ padding: "8px" }}>{c.service}</td>
-                <td style={{ padding: "8px" }}>{c.lastVisit}</td>
-                <td style={{ padding: "8px", textAlign: "right" }}>
-                  ₹{Number(c.revenue).toLocaleString("en-IN")}
-                </td>
-                <td style={{ padding: "8px", textAlign: "right" }}>
-                  {c.daysSinceLastVisit}
-                </td>
+        {urgentHighValue.length === 0 ? (
+          <p style={{ color: theme.sub }}>No customers in this category.</p>
+        ) : (
+          <table style={{ width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={th}>Name</th>
+                <th style={th}>Service</th>
+                <th style={th}>Last Visit</th>
+                <th style={th}>Revenue</th>
+                <th style={th}>Days Since Visit</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {urgentHighValue.map((c) => (
+                <tr key={c.name}>
+                  <td style={td}>{c.name}</td>
+                  <td style={td}>{c.service}</td>
+                  <td style={td}>{c.lastVisit}</td>
+                  <td style={td}>₹{c.revenue}</td>
+                  <td style={td}>{c.daysSince}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* FOLLOW UP */}
+      <div style={cardStyle(theme.highlightBlue)}>
+        <h3 style={{ marginBottom: "12px", color: theme.text }}>
+          📞 Follow-Up Customers
+        </h3>
+
+        {followUps.length === 0 ? (
+          <p style={{ color: theme.sub }}>No customers in this category.</p>
+        ) : (
+          <table style={{ width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={th}>Name</th>
+                <th style={th}>Service</th>
+                <th style={th}>Last Visit</th>
+                <th style={th}>Revenue</th>
+                <th style={th}>Days Since Visit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {followUps.map((c) => (
+                <tr key={c.name}>
+                  <td style={td}>{c.name}</td>
+                  <td style={td}>{c.service}</td>
+                  <td style={td}>{c.lastVisit}</td>
+                  <td style={td}>₹{c.revenue}</td>
+                  <td style={td}>{c.daysSince}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* CHURN RISK */}
+      <div style={cardStyle(theme.highlightYellow)}>
+        <h3 style={{ marginBottom: "12px", color: theme.text }}>
+          ⚠️ High Churn Risk (Haven’t Visited in 120+ Days)
+        </h3>
+
+        {churnRisk.length === 0 ? (
+          <p style={{ color: theme.sub }}>No customers in this category.</p>
+        ) : (
+          <table style={{ width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={th}>Name</th>
+                <th style={th}>Service</th>
+                <th style={th}>Last Visit</th>
+                <th style={th}>Revenue</th>
+                <th style={th}>Days Since Visit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {churnRisk.map((c) => (
+                <tr key={c.name}>
+                  <td style={td}>{c.name}</td>
+                  <td style={td}>{c.service}</td>
+                  <td style={td}>{c.lastVisit}</td>
+                  <td style={td}>₹{c.revenue}</td>
+                  <td style={td}>{c.daysSince}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
