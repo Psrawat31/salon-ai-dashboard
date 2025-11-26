@@ -27,28 +27,28 @@ export default function Sidebar() {
     >
       <h2 style={{ marginBottom: "25px" }}>AI Dashboard</h2>
 
-      <Link to="/dashboard" style={itemStyle("/dashboard")}>
+      <Link to="/" style={itemStyle("/")}>
         Dashboard
       </Link>
 
-      <Link to="/upload-customers" style={itemStyle("/upload-customers")}>
+      <Link to="/upload" style={itemStyle("/upload")}>
         Upload Customers
       </Link>
 
-      <Link to="/daily-summary" style={itemStyle("/daily-summary")}>
+      <Link to="/summary" style={itemStyle("/summary")}>
         Daily Summary
       </Link>
 
-      <Link to="/daily-reminders" style={itemStyle("/daily-reminders")}>
+      <Link to="/reminders" style={itemStyle("/reminders")}>
         AI Reminders
       </Link>
 
-      <Link to="/performance" style={itemStyle("/performance")}>
-        Performance
+      <Link to="/analytics" style={itemStyle("/analytics")}>
+        Service Analytics
       </Link>
 
-      <Link to="/service-analytics" style={itemStyle("/service-analytics")}>
-        Service Analytics
+      <Link to="/profiles" style={itemStyle("/profiles")}>
+        Customer Profiles
       </Link>
     </div>
   );
