@@ -49,26 +49,13 @@ export default function App() {
     >
       {/* Navigation */}
       <nav style={{ marginBottom: "20px" }}>
-        <Link style={{ marginRight: "12px" }} to="/">
-          Dashboard
-        </Link>
-        <Link style={{ marginRight: "12px" }} to="/upload">
-          Upload Customers
-        </Link>
-        <Link style={{ marginRight: "12px" }} to="/summary">
-          Daily Summary
-        </Link>
-        <Link style={{ marginRight: "12px" }} to="/reminders">
-          AI Reminders
-        </Link>
-        <Link style={{ marginRight: "12px" }} to="/analytics">
-          Service Analytics
-        </Link>
-        <Link style={{ marginRight: "12px" }} to="/profiles">
-          Customer Profiles
-        </Link>
+        <Link style={{ marginRight: "12px" }} to="/">Dashboard</Link>
+        <Link style={{ marginRight: "12px" }} to="/upload">Upload Customers</Link>
+        <Link style={{ marginRight: "12px" }} to="/summary">Daily Summary</Link>
+        <Link style={{ marginRight: "12px" }} to="/reminders">AI Reminders</Link>
+        <Link style={{ marginRight: "12px" }} to="/analytics">Service Analytics</Link>
+        <Link style={{ marginRight: "12px" }} to="/profiles">Customer Profiles</Link>
 
-        {/* Dark Mode Button */}
         <button
           onClick={toggleTheme}
           style={{
@@ -85,7 +72,7 @@ export default function App() {
         </button>
       </nav>
 
-      {/* Page Routes */}
+      {/* Routes */}
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/upload" element={<UploadCustomers />} />
